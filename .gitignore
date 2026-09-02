@@ -1,0 +1,22 @@
+# Full dataset -- too large for git (multi-GB), download via the Drive link in README.md instead
+data/full/
+data/interval1_*/
+data/interval5_CAM/
+data/interval5_LIDAR/
+data/colmap_work/
+data/terra_3dmap_pointcloud_mesh/
+data/samarth_output/
+
+# Outputs / generated files
+output/
+*.obj
+*.ply
+*.pyc
+__pycache__/
+
+# OS/editor junk
+.DS_Store
+.vscode/
+*.swp
+
+venv/

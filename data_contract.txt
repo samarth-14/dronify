@@ -1,0 +1,71 @@
+3D RECONSTRUCTION MODULE — EXPECTED DATA FORMATS
+SIH26158 · Owner: Aryan
+==========================================
+
+This is a reference for the formats I'll need from each part of the
+pipeline to build the 3D model. Sharing so we're aligned before
+integration.
+
+
+------------------------------------------------------------
+FROM UNNATI — Frame Selection (+ camera poses)
+------------------------------------------------------------
+For each selected video frame:
+
+  - frame_id         : a unique number identifying the frame (e.g. 1, 2, 3...)
+  - image file        : the RGB image (jpg/png)
+  - camera intrinsics  : a 3x3 matrix describing the camera's lens properties
+                         (focal length + optical center)
+  - camera pose        : a 4x4 matrix describing where the camera was
+                         positioned and oriented in 3D space for this frame
+
+Note: if pose estimation isn't part of frame selection, I'll compute
+poses myself using COLMAP from the selected frames -- just let me know
+which case applies.
+
+UPDATE: for the UAVScenes dataset specifically, real ground-truth poses
+are already provided in sampleinfos_interpolated.json (T4x4 = camera-to-
+world, P3x3 = intrinsics) -- no COLMAP needed for this data source.
+
+
+------------------------------------------------------------
+FROM CHEHAK — Depth Estimation
+------------------------------------------------------------
+For each frame:
+
+  - frame_id  : matching the frame_id above, so depth lines up with the
+                right frame + pose
+  - depth map : an array (same width/height as the image), one distance
+                value per pixel
+
+Important: I need to know whether depth values are:
+  (a) METRIC -- real-world distances in meters, or
+  (b) RELATIVE / INVERSE DEPTH -- needing a scale factor to convert to meters
+
+If (b), I'll also need the scale factor to apply.
+
+
+------------------------------------------------------------
+FROM SAMARTH — LiDAR Data
+------------------------------------------------------------
+If LiDAR is available for a scene:
+
+  - A point cloud file (e.g. .ply) with 3D points (X, Y, Z) in real-world
+    meters, ideally in a consistent world coordinate frame
+  - (Optional) reflectivity/intensity values per point, if available
+
+Also useful to know: the file format (.ply, .las, .laz, etc.) and
+whether the LiDAR capture corresponds to the same scene/timeframe as
+the drone video.
+
+UPDATE: received -- HKairport03_merged_clean.ply. 605 frames fused,
+statistical outlier removal + 5cm voxel downsample applied, ~15M points.
+Coordinate frame: DJI Terra's local map frame (not raw lat/lon/UTM).
+
+
+------------------------------------------------------------
+WHAT I HAND BACK (to Gauri + Hansika)
+------------------------------------------------------------
+  - A 3D mesh file (format TBD with Gauri -- .obj, .gltf, or .ply)
+  - The raw fused point cloud (.ply), for evaluation
+  - Basic stats: number of points, number of mesh vertices/faces
