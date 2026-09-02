@@ -41,7 +41,7 @@ with synchronized camera + LiDAR, real ground-truth poses, no COLMAP needed.
 Scene: `HKairport03`.
 
 - Dataset homepage: https://github.com/sijieaaa/UAVScenes
-- Full dataset download (Google Drive):(https://drive.google.com/drive/folders/1HSJWc5qmIKLdpaS8w8pqrWch4F9MHIeN)
+- **Full dataset download (Google Drive, HKairport03 only):** https://drive.google.com/file/d/1icqwi7kCu9bHAl0FTULwO_-mrQcgAoAv/view?usp=drive_link
 
 The full dataset (`interval5_CAM` images, `interval5_LIDAR` raw scans) is **not
 committed to this repo** — it's multiple GB and would make clones painfully
@@ -61,6 +61,13 @@ scan = fuse_uavscenes_lidar(
 )
 ```
 
+### Real LiDAR ground truth (Samarth's merged + cleaned scan)
+`data/terra_ground_truth/HKairport03_merged_clean.ply` — 605 frames fused,
+statistical outlier removal + 5cm voxel downsample applied. ~15M points,
+~586m x 435m extent. Coordinate frame: DJI Terra's local map frame (not
+raw lat/lon/UTM). This is the ground truth to compare your reconstruction
+against.
+
 ### Expected local folder layout (after downloading the full dataset)
 ```
 data/
@@ -69,4 +76,5 @@ data/
   sampleinfos_interpolated.json     # real ground-truth poses + intrinsics
   rtk_positions_raw.csv             # raw RTK GPS positions
   sample_HKairport03/               # small committed sample (already in repo)
+  terra_ground_truth/               # Samarth's merged + cleaned LiDAR ground truth
 ```
