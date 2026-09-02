@@ -41,7 +41,7 @@ with synchronized camera + LiDAR, real ground-truth poses, no COLMAP needed.
 Scene: `HKairport03`.
 
 - Dataset homepage: https://github.com/sijieaaa/UAVScenes
-- **Full dataset download (Google Drive):** *[paste your team's Drive link here]*
+- Full dataset download (Google Drive):(https://drive.google.com/drive/folders/1HSJWc5qmIKLdpaS8w8pqrWch4F9MHIeN)
 
 The full dataset (`interval5_CAM` images, `interval5_LIDAR` raw scans) is **not
 committed to this repo** — it's multiple GB and would make clones painfully
