@@ -44,11 +44,20 @@ def load_frames_and_poses(folder: str):
         pose_entries = json.load(f)
 
     frame_paths = sorted(glob.glob(os.path.join(folder, "frames", "*.jpg")))
+    frame_path_map = {}
+
+    for path in frame_paths:
+        filename = os.path.basename(path)
+        match = re.search(r"(\d+)", filename)
+
+        if match:
+            fid = int(match.group(1))
+            frame_path_map[fid] = path
 
     frames, rgb_images = [], []
     for entry in pose_entries:
         fid = entry["frame_id"]
-        img_path = frame_paths[fid] if fid < len(frame_paths) else None
+        img_path = frame_path_map.get(fid)
         if img_path is None:
             continue
         rgb = cv2.imread(img_path)
