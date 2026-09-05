@@ -341,7 +341,7 @@ def select_frames(
             selected_frame = {
                 "frame_id": item["frame_id"],
                 "timestamp": item["timestamp"],
-                "image_path": image_path,
+                "image_path": os.path.relpath(image_path),
                 "image": item["image"]
                 }
 
