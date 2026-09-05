@@ -246,6 +246,84 @@ def load_frames_and_poses_uavscenes(json_path: str, images_folder: str):
 
 
 # ----------------------------------------------------------------------
+# Adapter: Unnati's frame_selection module <-> this module's interfaces
+# ----------------------------------------------------------------------
+def to_selection_input(frames: list, rgb_images: list) -> list:
+    """
+    Converts CameraFrame + rgb_images (this module's format) into the
+    list-of-dicts format frame_selection.quality_sampler.select_frames()
+    expects: {frame_id, timestamp, image, pose, intrinsics}.
+
+    NOTE: passes RGB images through as-is. Unnati's quality_sampler.py
+    internally assumes BGR (uses cv2.COLOR_BGR2GRAY and cv2.imwrite,
+    both BGR-order operations) -- her saved thumbnail JPEGs will have
+    swapped red/blue channels as a result, and her grayscale/quality
+    scoring uses slightly wrong channel weights. Doesn't break selection
+    functionally (still picks reasonable frames), but flag this to her:
+    she should cv2.cvtColor(image, cv2.COLOR_RGB2BGR) at the top of
+    _calculate_quality() and before cv2.imwrite(), or accept BGR input
+    from the start.
+    """
+    selection_input = []
+    for frame, rgb in zip(frames, rgb_images):
+        timestamp = frame.frame_id
+        name = os.path.basename(frame.image_path)
+        try:
+            timestamp = float(name.replace(".jpg", "").replace(".png", ""))
+        except ValueError:
+            pass  # fall back to frame_id as timestamp if filename isn't a plain float
+
+        selection_input.append({
+            "frame_id": frame.frame_id,
+            "timestamp": timestamp,
+            "image": rgb,
+            "pose": frame.pose,
+            "intrinsics": frame.intrinsics,
+        })
+    return selection_input
+
+
+def frames_from_selection(selected_frames: list, original_frames: list, original_rgb_images: list):
+    """
+    Takes Unnati's select_frames() output and maps it back to this
+    module's (List[CameraFrame], List[np.ndarray]) format -- ready to
+    pass straight into reconstruct.run_pipeline().
+
+    IMPORTANT: deliberately re-fetches images from the ORIGINAL
+    frames/rgb_images lists (matched by frame_id) rather than trusting
+    selected_frames[i]["image"] -- sidesteps the BGR/RGB bug noted in
+    to_selection_input() above entirely, since we never touch her
+    potentially-recolored copy.
+
+    Returns: (List[CameraFrame], List[np.ndarray] rgb_images) -- same
+    shapes as load_frames_and_poses_uavscenes(), just a filtered subset.
+    """
+    original_by_id = {f.frame_id: (f, rgb) for f, rgb in zip(original_frames, original_rgb_images)}
+
+    frames, rgb_images = [], []
+    missing = 0
+    for item in selected_frames:
+        fid = item["frame_id"]
+        match = original_by_id.get(fid)
+        if match is None:
+            missing += 1
+            continue
+        frame, rgb = match
+        frames.append(frame)
+        rgb_images.append(rgb)
+
+    if missing:
+        print(f"  Warning: {missing}/{len(selected_frames)} selected frame_ids "
+              f"had no match in the original frame list -- check frame_id "
+              f"consistency between the selector and the loader.")
+
+    print(f"  Frame selection: {len(original_frames)} -> {len(frames)} frames "
+          f"({len(frames)/len(original_frames)*100:.1f}% kept)")
+
+    return frames, rgb_images
+
+
+# ----------------------------------------------------------------------
 # CHEHAK -- Depth Estimation
 # ----------------------------------------------------------------------
 def load_depth_maps(folder: str, frame_ids: list, is_metric: bool = True, scale_factor: float = 1.0):
