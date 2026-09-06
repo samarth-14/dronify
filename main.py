@@ -44,7 +44,8 @@ def main():
         frames, depths, rgb_images = make_synthetic_scene(n_views=12, img_size=200)
         lidar = None
 
-    result = run_pipeline(frames, depths, rgb_images, lidar=lidar, out_dir=OUT_DIR)
+    result = run_pipeline(frames, depths, rgb_images, lidar=lidar, out_dir=OUT_DIR,
+                           downsample_factor=0.3 if USE_REAL_DATA else None)
     print("\nDone:", result)
 
 
