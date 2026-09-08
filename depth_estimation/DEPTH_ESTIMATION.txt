@@ -1,0 +1,192 @@
+DRONIFY - DEPTH ESTIMATION
+==========================
+
+Contributor:
+Chehak
+
+Module:
+Monocular Metric Depth Estimation
+
+MODEL
+-----
+
+Depth Anything V2 Metric
+
+Checkpoint:
+depth_anything_v2_metric_vkitti_vits.pth
+
+Dataset:
+Virtual KITTI 2 (VKITTI) metric-finetuned model
+
+The VKITTI metric model was selected because the target
+dataset consists of outdoor/aerial UAV imagery.
+
+
+INPUT
+-----
+
+Dataset:
+interval5_HKairport03
+
+Camera images:
+interval5_CAM
+
+Frame metadata:
+sampleinfos_interpolated.json
+
+The metadata provides the mapping between:
+OriginalImageName -> SortedImageID
+
+It also contains camera intrinsics and camera poses
+required by the reconstruction pipeline.
+
+
+OUTPUT
+------
+
+Number of processed frames:
+605
+
+Output directory:
+chehak_output/
+
+Output format:
+NumPy .npy files
+
+Filename format:
+{SortedImageID:04d}_depth.npy
+
+Examples:
+0000_depth.npy
+0005_depth.npy
+0010_depth.npy
+
+
+DEPTH MAP PROPERTIES
+--------------------
+
+Shape:
+2048 x 2448
+
+Data type:
+float32
+
+Depth type:
+Metric depth prediction
+
+Units:
+Meters
+
+Example depth statistics for frame 0000:
+
+Minimum: approximately 4.75 m
+Maximum: approximately 12.73 m
+Mean: approximately 6.66 m
+
+
+PIPELINE
+--------
+
+RGB image
+    |
+    v
+Depth Anything V2 Metric-VKITTI
+    |
+    v
+Metric depth map
+    |
+    v
+Convert to float32
+    |
+    v
+Save as .npy
+    |
+    v
+Reconstruction pipeline
+
+
+FILE ORGANIZATION
+-----------------
+
+dronify/
+|
+|-- depth_estimation/
+|   |-- depth_estimation.py
+|   |-- DEPTH_ESTIMATION.txt
+|
+|-- data/
+|   |-- interval5_CAM/
+|   |-- sampleinfos_interpolated.json
+|
+|-- chehak_output/
+|   |-- 0000_depth.npy
+|   |-- 0005_depth.npy
+|   |-- ...
+|
+|-- interfaces.py
+|-- reconstruct.py
+|-- loaders.py
+|-- data_contract.txt
+|-- README.md
+
+
+LARGE OUTPUT DATA
+-----------------
+
+The generated .npy files are not committed to GitHub because
+the complete collection is very large.
+
+The 605 depth maps should be stored externally, for example
+on Google Drive.
+
+The GitHub repository should contain the code and this
+documentation file.
+
+The Google Drive link to the depth outputs should be added
+to the repository README or data documentation.
+
+
+IMPORTANT NOTE
+--------------
+
+Although the metric VKITTI model produces depth predictions
+in metric units, the predictions are not ground-truth measurements.
+
+For high-accuracy reconstruction, the predicted depth should
+be evaluated and, if necessary, aligned/calibrated against
+the available LiDAR data.
+
+LiDAR can therefore be used to evaluate the depth predictions
+using metrics such as MAE, RMSE and Absolute Relative Error.
+
+
+HANDOFF TO RECONSTRUCTION
+-------------------------
+
+For each frame, the reconstruction module should load:
+
+1. RGB image
+2. Corresponding depth .npy file
+3. Camera intrinsic matrix P3x3
+4. Camera-to-world pose T4x4
+
+The frame ID must remain consistent between the RGB image,
+metadata and depth map.
+
+Example:
+
+Frame ID:
+0000
+
+Depth:
+0000_depth.npy
+
+
+STATUS
+------
+
+Depth estimation completed successfully.
+
+605 / 605 frames processed.
+
+All generated depth maps have been saved in chehak_output/.
