@@ -13,16 +13,28 @@ Run this file directly to test against synthetic data (see test_synthetic.py).
 """
 
 import os
+import cv2
 import numpy as np
 import open3d as o3d
 from typing import List, Optional
 from interfaces import CameraFrame, DepthMap, LidarScan, ReconstructionOutput
 
 
-def depth_to_pointcloud(frame: CameraFrame, depth: DepthMap, rgb_image: np.ndarray) -> o3d.geometry.PointCloud:
+def depth_to_pointcloud(frame: CameraFrame, depth: DepthMap, rgb_image: np.ndarray,
+                         downsample_factor: float = None) -> o3d.geometry.PointCloud:
     """
     Step 2: Back-project a single depth map into a colored 3D point cloud,
     using the camera intrinsics and pose from CameraFrame.
+
+    downsample_factor (e.g. 0.3) resizes the depth map + image BEFORE
+    back-projection, scaling intrinsics (fx, fy, cx, cy) to match, so the
+    resulting geometry is correct just at lower resolution -- not a crop,
+    not a naive point-cloud downsample after the fact. This matters at
+    real-world scale: a single 2448x2048 frame back-projected at full
+    resolution produces ~5 million points; 7 real frames produced 35
+    million points in testing, which will not scale to hundreds of real
+    frames without this. None (default) = no resizing, unchanged behavior
+    for the small synthetic test scene.
     """
     depth_m = depth.depth.astype(np.float32)
     if not depth.is_metric:
@@ -31,6 +43,17 @@ def depth_to_pointcloud(frame: CameraFrame, depth: DepthMap, rgb_image: np.ndarr
     h, w = depth_m.shape
     fx, fy = frame.intrinsics[0, 0], frame.intrinsics[1, 1]
     cx, cy = frame.intrinsics[0, 2], frame.intrinsics[1, 2]
+
+    if downsample_factor is not None and downsample_factor != 1.0:
+        new_w, new_h = max(1, int(w * downsample_factor)), max(1, int(h * downsample_factor))
+        # INTER_NEAREST for depth -- averaging depth values across a resize
+        # boundary can invent fake intermediate distances; nearest-neighbor
+        # preserves real measured values instead.
+        depth_m = cv2.resize(depth_m, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        rgb_image = cv2.resize(rgb_image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        fx, fy = fx * downsample_factor, fy * downsample_factor
+        cx, cy = cx * downsample_factor, cy * downsample_factor
+        h, w = new_h, new_w
 
     depth_o3d = o3d.geometry.Image(depth_m)
     color_o3d = o3d.geometry.Image(rgb_image.astype(np.uint8))
@@ -48,25 +71,40 @@ def depth_to_pointcloud(frame: CameraFrame, depth: DepthMap, rgb_image: np.ndarr
     return pcd
 
 
-def fuse_frames(frames: List[CameraFrame], depths: List[DepthMap], rgb_images: List[np.ndarray]) -> o3d.geometry.PointCloud:
+def fuse_frames(frames: List[CameraFrame], depths: List[DepthMap], rgb_images: List[np.ndarray],
+                 downsample_factor: float = None) -> o3d.geometry.PointCloud:
     """
     Step 2 (continued): merge per-frame point clouds into one global point cloud.
+
+    downsample_factor is passed straight through to depth_to_pointcloud() --
+    see that function's docstring for why this matters at real-world scale.
     """
     fused = o3d.geometry.PointCloud()
     for frame, depth, rgb in zip(frames, depths, rgb_images):
-        pcd = depth_to_pointcloud(frame, depth, rgb)
+        pcd = depth_to_pointcloud(frame, depth, rgb, downsample_factor=downsample_factor)
         fused += pcd
     return fused
 
 
 def fuse_with_lidar(depth_pcd: o3d.geometry.PointCloud, lidar: LidarScan,
-                     icp_threshold: float = 0.5) -> o3d.geometry.PointCloud:
+                     icp_threshold: float = None) -> o3d.geometry.PointCloud:
     """
     Step 3: align and fuse LiDAR points (accurate, sparse) with
     depth-derived points (dense, less accurate scale) using ICP.
+
+    icp_threshold=None (default) auto-scales to the LiDAR scan's own size,
+    same reasoning as clean_pointcloud()'s voxel_size -- a fixed 0.5m
+    threshold tuned for a small synthetic scene is not automatically
+    right for a 700m real scene. Override explicitly if ICP fails to
+    converge or over-converges.
     """
     lidar_pcd = o3d.geometry.PointCloud()
     lidar_pcd.points = o3d.utility.Vector3dVector(lidar.points)
+
+    if icp_threshold is None:
+        diag = np.linalg.norm(lidar.points.max(axis=0) - lidar.points.min(axis=0))
+        icp_threshold = max(diag / 1000.0, 1e-3)
+        print(f"  Auto icp_threshold = {icp_threshold:.4f}m (LiDAR scan diagonal = {diag:.2f}m)")
 
     # ICP aligns depth_pcd onto lidar_pcd (lidar treated as more trustworthy)
     reg = o3d.pipelines.registration.registration_icp(
@@ -80,10 +118,24 @@ def fuse_with_lidar(depth_pcd: o3d.geometry.PointCloud, lidar: LidarScan,
     return fused
 
 
-def clean_pointcloud(pcd: o3d.geometry.PointCloud, voxel_size: float = 0.02) -> o3d.geometry.PointCloud:
+def clean_pointcloud(pcd: o3d.geometry.PointCloud, voxel_size: float = None) -> o3d.geometry.PointCloud:
     """
     Step 4: remove noise and downsample so meshing doesn't choke on outliers.
+
+    voxel_size=None (default) auto-scales to the point cloud's own size --
+    critical because a fixed small voxel size (e.g. 0.02m, fine for a
+    ~2m synthetic test sphere) becomes catastrophically wrong at real-world
+    scale: a 700m-diagonal scene at 2cm resolution implies tens of millions
+    of voxels, which is painfully slow or crashes outright. Auto-scaling
+    targets roughly bbox_diagonal / 200 as a sane starting resolution --
+    override explicitly once you know what detail level you actually need.
     """
+    if voxel_size is None:
+        pts = np.asarray(pcd.points)
+        diag = np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))
+        voxel_size = max(diag / 200.0, 1e-4)
+        print(f"  Auto voxel_size = {voxel_size:.4f}m (scene diagonal = {diag:.2f}m)")
+
     pcd = pcd.voxel_down_sample(voxel_size)
     pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
     return pcd
@@ -133,13 +185,18 @@ def export_results(pcd: o3d.geometry.PointCloud, mesh: o3d.geometry.TriangleMesh
 
 
 def run_pipeline(frames: List[CameraFrame], depths: List[DepthMap], rgb_images: List[np.ndarray],
-                  lidar: Optional[LidarScan] = None, out_dir: str = ".") -> ReconstructionOutput:
+                  lidar: Optional[LidarScan] = None, out_dir: str = ".",
+                  downsample_factor: float = None) -> ReconstructionOutput:
     """
     Full pipeline, callable end-to-end. This is the function your teammates'
     real data will eventually be plugged into.
+
+    downsample_factor: resize depth maps + images before back-projection
+    (e.g. 0.3 for real-world full-resolution frames). None = no resizing,
+    appropriate for the small synthetic test scene.
     """
     print("[1/5] Fusing depth maps into point cloud...")
-    pcd = fuse_frames(frames, depths, rgb_images)
+    pcd = fuse_frames(frames, depths, rgb_images, downsample_factor=downsample_factor)
     print(f"      -> {len(pcd.points)} raw points")
 
     if lidar is not None:

@@ -3,3 +3,4 @@ numpy
 opencv-python-headless
 laspy
 lazrs
+scipy
